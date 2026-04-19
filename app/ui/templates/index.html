@@ -51,6 +51,29 @@
             Language
             <input id="langInput" type="text" placeholder="en" />
           </label>
+          <label>
+            Sort by
+            <select id="sortBySelect">
+              <option value="post.created_at">Post created at</option>
+              <option value="bookmark.first_seen_at">Bookmark first seen at</option>
+              <option value="bookmark.last_seen_at" selected>Bookmark last seen at</option>
+              <option value="post.metrics.like_count">Like count</option>
+            </select>
+          </label>
+          <label>
+            Order
+            <select id="sortOrderSelect">
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+          </label>
+        </div>
+        <div class="advanced-filters">
+          <div class="filters-header">
+            <strong>Advanced filters</strong>
+            <button id="addFilterButton" type="button" class="secondary">Add filter</button>
+          </div>
+          <div id="filterRows"></div>
         </div>
       </form>
     </section>
@@ -68,6 +91,15 @@
       </aside>
     </main>
 
+    <template id="filterRowTemplate">
+      <div class="filter-row">
+        <select class="filter-field"></select>
+        <select class="filter-operator"></select>
+        <input class="filter-value" type="text" placeholder="Value" />
+        <button class="remove-filter secondary" type="button">Remove</button>
+      </div>
+    </template>
+
     <template id="resultTemplate">
       <article class="result-card">
         <div class="result-header">
@@ -80,6 +112,7 @@
         <p class="result-snippet"></p>
         <div class="result-meta">
           <span class="media-badge"></span>
+          <span class="metrics-badge muted"></span>
           <a class="open-link" target="_blank" rel="noopener noreferrer">Open on X</a>
           <button class="details-button secondary">Details</button>
         </div>

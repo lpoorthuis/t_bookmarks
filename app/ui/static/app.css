@@ -36,7 +36,9 @@ body {
 .search-row,
 .filters,
 .result-meta,
-.result-header {
+.result-header,
+.filters-header,
+.filter-row {
   display: flex;
   gap: 0.75rem;
   align-items: center;
@@ -50,7 +52,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   border-radius: 8px;
   border: 1px solid #475569;
   padding: 0.65rem 0.85rem;
@@ -67,7 +70,8 @@ button.secondary {
   background: transparent;
 }
 
-input {
+input,
+select {
   background: #0f172a;
   color: inherit;
 }
@@ -75,6 +79,35 @@ input {
 #queryInput {
   flex: 1;
   min-width: 16rem;
+}
+
+.advanced-filters {
+  margin-top: 1rem;
+}
+
+#filterRows {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.filter-row {
+  padding: 0.75rem;
+  border: 1px solid #334155;
+  border-radius: 10px;
+}
+
+.filter-row .filter-field {
+  min-width: 15rem;
+}
+
+.filter-row .filter-operator {
+  min-width: 10rem;
+}
+
+.filter-row .filter-value {
+  flex: 1;
+  min-width: 10rem;
 }
 
 .muted {
@@ -99,6 +132,10 @@ input {
   color: white;
   border-radius: 999px;
   padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.metrics-badge {
   font-size: 0.85rem;
 }
 
