@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>t_bookmarks</h1>
+        <p class="muted">Search your X bookmarks locally.</p>
+      </div>
+      <div class="actions">
+        <button id="loginButton">Connect X account</button>
+        <button id="logoutButton" class="secondary">Logout</button>
+        <button id="syncButton">Sync now</button>
+      </div>
+    </header>
+
+    <section class="panel" id="statusPanel">
+      <div><strong>Connection:</strong> <span id="connectionStatus">Checking…</span></div>
+      <div><strong>User:</strong> <span id="userInfo">-</span></div>
+      <div><strong>Bookmarks:</strong> <span id="bookmarkCount">0</span></div>
+      <div><strong>Last sync:</strong> <span id="lastSync">Never</span></div>
+      <div><strong>Sync status:</strong> <span id="syncStatus">Idle</span></div>
+      <div id="syncMessage" class="muted"></div>
+    </section>
+
+    <section class="panel controls">
+      <form id="searchForm">
+        <div class="search-row">
+          <input id="queryInput" type="search" placeholder="Search bookmarks" />
+          <button type="submit">Search</button>
+        </div>
+        <div class="filters">
+          <label>
+            <input id="activeOnlyInput" type="checkbox" checked />
+            Active only
+          </label>
+          <label>
+            <input id="hasMediaInput" type="checkbox" />
+            Has media
+          </label>
+          <label>
+            Author
+            <input id="authorInput" type="text" placeholder="username" />
+          </label>
+          <label>
+            Language
+            <input id="langInput" type="text" placeholder="en" />
+          </label>
+        </div>
+      </form>
+    </section>
+
+    <main class="grid">
+      <section class="panel">
+        <h2>Results</h2>
+        <div id="resultsMeta" class="muted"></div>
+        <div id="results"></div>
+      </section>
+
+      <aside class="panel">
+        <h2>Details</h2>
+        <div id="details" class="muted">Select a result to view details.</div>
+      </aside>
+    </main>
+
+    <template id="resultTemplate">
+      <article class="result-card">
+        <div class="result-header">
+          <div>
+            <strong class="author-name"></strong>
+            <span class="muted author-username"></span>
+          </div>
+          <span class="muted result-date"></span>
+        </div>
+        <p class="result-snippet"></p>
+        <div class="result-meta">
+          <span class="media-badge"></span>
+          <a class="open-link" target="_blank" rel="noopener noreferrer">Open on X</a>
+          <button class="details-button secondary">Details</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
