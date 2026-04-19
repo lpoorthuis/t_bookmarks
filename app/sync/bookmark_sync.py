@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from datetime import datetime, timezone
+import logging
 from typing import Any
 
 import httpx
@@ -12,6 +11,9 @@ from app.db.sqlite import Database
 from app.search.service import SearchService
 from app.sync.normalizer import extract_entities, normalize_media, normalize_posts, normalize_users, utcnow_iso
 from app.xapi.client import XApiClient
+
+
+logger = logging.getLogger("app.sync")
 
 
 class BookmarkSyncService:
@@ -44,7 +46,9 @@ class BookmarkSyncService:
 
     def start_sync(self, full: bool = True) -> dict[str, Any]:
         if self.is_running():
+            logger.info("Sync start requested while sync already running")
             return self.get_sync_status()
+        logger.info("Scheduling %s sync", "full" if full else "incremental")
         self._task = asyncio.create_task(self._run_sync(full=full))
         return self.get_sync_status()
 
@@ -69,6 +73,7 @@ class BookmarkSyncService:
             }
         )
         try:
+            logger.info("Starting sync run_id=%s mode=%s", run_id, mode)
             access_token = await self.auth_service.get_valid_access_token()
             user_id = self.auth_service.get_current_user_id()
             seen_bookmarked_ids: set[str] = set()
@@ -86,12 +91,27 @@ class BookmarkSyncService:
                 page_stats = self._persist_page(run_id, users, posts, media, bookmarked_ids)
                 seen_bookmarked_ids.update(bookmarked_ids)
 
+                meta = payload.get("meta") or {}
                 self._status["pages_fetched"] += 1
                 self._status["posts_seen"] += page_stats["posts_seen"]
                 self._status["posts_inserted"] += page_stats["posts_inserted"]
                 self._status["posts_updated"] += page_stats["posts_updated"]
 
-                pagination_token = (payload.get("meta") or {}).get("next_token")
+                pagination_token = meta.get("next_token")
+                logger.info(
+                    "Processed bookmarks page run_id=%s page=%s result_count=%s next_token_present=%s inserted=%s updated=%s seen_total=%s",
+                    run_id,
+                    page_counter,
+                    meta.get("result_count"),
+                    bool(pagination_token),
+                    page_stats["posts_inserted"],
+                    page_stats["posts_updated"],
+                    self._status["posts_seen"],
+                )
+                if meta.get("result_count") == 99 and not pagination_token:
+                    logger.warning(
+                        "Bookmarks endpoint returned 99 results without next_token. This is a known X API quirk when requesting 100 items; the client now defaults to 99 to preserve pagination."
+                    )
                 if not pagination_token:
                     break
                 if pages_limit is not None and page_counter >= pages_limit:
@@ -104,12 +124,24 @@ class BookmarkSyncService:
                 self._set_app_state("last_full_sync_at", utcnow_iso())
             self._set_app_state("last_sync_at", utcnow_iso())
             self._finish_run(run_id, "success", None, deactivated)
+            finished_at = utcnow_iso()
             self._status.update({
                 "running": False,
-                "finished_at": utcnow_iso(),
+                "finished_at": finished_at,
                 "message": "Sync completed",
             })
+            logger.info(
+                "Completed sync run_id=%s mode=%s pages=%s bookmarks_seen=%s inserted=%s updated=%s deactivated=%s",
+                run_id,
+                mode,
+                self._status["pages_fetched"],
+                self._status["posts_seen"],
+                self._status["posts_inserted"],
+                self._status["posts_updated"],
+                deactivated,
+            )
         except (AuthError, httpx.HTTPError, RuntimeError) as exc:
+            logger.exception("Sync run_id=%s failed", run_id)
             self._finish_run(run_id, "failed", str(exc), self._status["posts_deactivated"])
             self._status.update({
                 "running": False,
@@ -128,9 +160,17 @@ class BookmarkSyncService:
                 if status in {429, 500, 502, 503, 504} and attempt < 4:
                     retry_after = exc.response.headers.get("Retry-After")
                     sleep_for = float(retry_after) if retry_after and retry_after.isdigit() else delay
+                    logger.warning(
+                        "Bookmarks page fetch failed with status=%s; retrying in %s seconds (attempt %s/5)",
+                        status,
+                        sleep_for,
+                        attempt + 1,
+                    )
                     await asyncio.sleep(sleep_for)
                     delay *= 2
                     continue
+                logger.error("Bookmarks page fetch failed with status=%s and will not be retried", status)
+                raise
                 raise
 
     def _create_run(self, mode: str, started_at: str) -> int:

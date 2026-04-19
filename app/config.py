@@ -36,6 +36,8 @@ class Settings:
     x_scopes: tuple[str, ...] = tuple(os.environ.get("X_SCOPES", "bookmark.read tweet.read users.read offline.access").split())
     sync_interval_minutes: int = int(os.environ.get("SYNC_INTERVAL_MINUTES", "360"))
     request_timeout_seconds: int = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
+    log_dir: Path = Path(os.environ.get("LOG_DIR", str(BASE_DIR / "logs")))
+    log_level: str = os.environ.get("LOG_LEVEL", "INFO")
     x_authorize_url: str = "https://x.com/i/oauth2/authorize"
     x_token_url: str = "https://api.x.com/2/oauth2/token"
     x_api_base_url: str = "https://api.x.com/2"

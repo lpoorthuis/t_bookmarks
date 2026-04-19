@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.auth.oauth_client import OAuthClient
 from app.auth.pkce import generate_code_challenge, generate_code_verifier, generate_state
 from app.auth.token_store import TokenStore
 from app.xapi.client import XApiClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthError(RuntimeError):
@@ -25,6 +29,7 @@ class AuthService:
         code_verifier = generate_code_verifier()
         code_challenge = generate_code_challenge(code_verifier)
         self.token_store.save_oauth_state(state, code_verifier)
+        logger.info("Created OAuth login redirect")
         return self.oauth_client.build_authorize_url(state, code_challenge)
 
     async def handle_callback(self, code: str, state: str) -> None:
@@ -34,6 +39,7 @@ class AuthService:
         token_payload = await self.oauth_client.exchange_code(code, code_verifier)
         user = await self.x_client.get_me(token_payload["access_token"])
         self.token_store.save_token(token_payload, user)
+        logger.info("OAuth callback completed for user_id=%s username=%s", user.get("id"), user.get("username"))
 
     async def get_valid_access_token(self) -> str:
         token = self.token_store.get_token()
@@ -41,6 +47,7 @@ class AuthService:
             raise AuthError("Not connected to X")
         if not self.token_store.is_expired(token):
             return token["access_token"]
+        logger.info("Access token expired, refreshing token for user_id=%s", token.get("user_id"))
         refresh_token = token.get("refresh_token")
         if not refresh_token:
             raise AuthError("Access token expired and no refresh token is available")
@@ -51,6 +58,7 @@ class AuthService:
             "name": token.get("name"),
         }
         self.token_store.save_token(refreshed, user)
+        logger.info("Access token refresh completed for user_id=%s", token.get("user_id"))
         latest = self.token_store.get_token()
         if not latest:
             raise AuthError("Failed to persist refreshed token")
@@ -78,4 +86,5 @@ class AuthService:
         return token["user_id"]
 
     def logout(self) -> None:
+        logger.info("Clearing local auth state")
         self.token_store.clear()

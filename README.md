@@ -63,6 +63,8 @@ This project uses [`uv`](https://docs.astral.sh/uv/) for Python environment and 
 - Tokens are stored locally in SQLite.
 - The app binds to `127.0.0.1` by default.
 - Bookmark data is private; keep the database file secure.
+- Logs are written to `./logs/app.log` and `./logs/sync.log` by default.
+- The bookmarks sync uses `max_results=99` as a workaround for an X API pagination quirk where requesting `100` returned `99` results without a `next_token`.
 
 ## Project layout
 

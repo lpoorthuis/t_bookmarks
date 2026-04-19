@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -18,10 +19,14 @@ from app.auth.service import AuthService
 from app.auth.token_store import TokenStore
 from app.config import settings
 from app.db.sqlite import Database
+from app.logging_config import setup_logging
 from app.search.service import SearchService
 from app.sync.bookmark_sync import BookmarkSyncService
 from app.xapi.client import XApiClient
 
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "ui" / "templates"))
@@ -29,17 +34,20 @@ TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "ui" / "templates"))
 
 async def periodic_sync_loop(app: FastAPI) -> None:
     interval_seconds = max(60, settings.sync_interval_minutes * 60)
+    logger.info("Periodic sync loop started with interval=%s seconds", interval_seconds)
     while True:
         try:
             if app.state.auth_service.get_auth_status()["connected"] and not app.state.sync_service.is_running():
+                logger.info("Triggering scheduled incremental sync")
                 app.state.sync_service.start_sync(full=False)
         except Exception:
-            pass
+            logger.exception("Periodic sync loop iteration failed")
         await asyncio.sleep(interval_seconds)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Starting application with database=%s log_dir=%s", settings.database_path, settings.log_dir)
     db = Database(settings.database_path)
     db.initialize(BASE_DIR / "db" / "schema.sql")
 
@@ -58,6 +66,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        logger.info("Shutting down application")
         background_task.cancel()
         with suppress(asyncio.CancelledError):
             await background_task
