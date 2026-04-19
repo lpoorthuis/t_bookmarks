@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
 def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _json(value: Any) -> str:
@@ -21,9 +21,21 @@ def extract_full_text(post: dict[str, Any]) -> str:
 def extract_entities(post: dict[str, Any]) -> dict[str, list[str]]:
     entities = post.get("entities") or {}
     return {
-        "hashtags": [item.get("tag", "") for item in entities.get("hashtags", []) if item.get("tag")],
-        "mentions": [item.get("username", "") for item in entities.get("mentions", []) if item.get("username")],
-        "urls": [item.get("expanded_url") or item.get("url") for item in entities.get("urls", []) if item.get("expanded_url") or item.get("url")],
+        "hashtags": [
+            item.get("tag", "")
+            for item in entities.get("hashtags", [])
+            if item.get("tag")
+        ],
+        "mentions": [
+            item.get("username", "")
+            for item in entities.get("mentions", [])
+            if item.get("username")
+        ],
+        "urls": [
+            item.get("expanded_url") or item.get("url")
+            for item in entities.get("urls", [])
+            if item.get("expanded_url") or item.get("url")
+        ],
     }
 
 
@@ -86,7 +98,9 @@ def normalize_posts(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list
 
 def normalize_media(payload: dict[str, Any]) -> list[dict[str, Any]]:
     posts = payload.get("data", []) + payload.get("includes", {}).get("tweets", [])
-    media_by_key = {item["media_key"]: item for item in payload.get("includes", {}).get("media", [])}
+    media_by_key = {
+        item["media_key"]: item for item in payload.get("includes", {}).get("media", [])
+    }
     rows: list[dict[str, Any]] = []
     for post in posts:
         attachments = post.get("attachments") or {}

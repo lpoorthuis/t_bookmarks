@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import logging
 import logging.config
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from app.config import settings
-
 
 LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 

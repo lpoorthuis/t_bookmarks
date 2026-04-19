@@ -7,7 +7,6 @@ import httpx
 
 from app.config import Settings
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -15,11 +14,17 @@ class XApiClient:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    async def _get(self, path: str, access_token: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _get(
+        self, path: str, access_token: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {access_token}"}
         logger.debug("GET %s params=%s", path, params)
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
-            response = await client.get(f"{self.settings.x_api_base_url}{path}", headers=headers, params=params)
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds
+        ) as client:
+            response = await client.get(
+                f"{self.settings.x_api_base_url}{path}", headers=headers, params=params
+            )
             response.raise_for_status()
             payload = response.json()
             meta = payload.get("meta")
@@ -30,7 +35,9 @@ class XApiClient:
             return payload
 
     async def get_me(self, access_token: str) -> dict[str, Any]:
-        payload = await self._get("/users/me", access_token, params={"user.fields": "id,name,username"})
+        payload = await self._get(
+            "/users/me", access_token, params={"user.fields": "id,name,username"}
+        )
         return payload["data"]
 
     async def get_bookmarks_page(
@@ -75,4 +82,6 @@ class XApiClient:
                 "Requested max_results=%s for bookmarks. X API currently appears to return only 99 rows and omit next_token at 100; using 99 is safer.",
                 max_results,
             )
-        return await self._get(f"/users/{user_id}/bookmarks", access_token, params=params)
+        return await self._get(
+            f"/users/{user_id}/bookmarks", access_token, params=params
+        )

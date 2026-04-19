@@ -46,17 +46,54 @@ This project uses [`uv`](https://docs.astral.sh/uv/) for Python environment and 
    - `X_REDIRECT_URI`
    - `APP_SECRET_KEY`
 
-4. Run the app:
+4. Install the git pre-commit hook:
+
+   ```bash
+   uv run pre-commit install
+   ```
+
+5. Run the app:
 
    ```bash
    uv run uvicorn app.main:app --reload
    ```
 
-5. Open:
+6. Open:
 
    ```
    http://127.0.0.1:8000
    ```
+
+## Code quality
+
+Run the checks manually:
+
+```bash
+uv run ruff check . --fix
+uv run ruff format .
+uv run ty check .
+uv run pre-commit run --all-files
+```
+
+The pre-commit hook runs:
+
+- `ruff check --fix`
+- `ruff format`
+- `ty check --fix`
+
+## Pi extension
+
+A project-local pi extension is included at `.pi/extensions/python-quality-on-agent-end.ts`.
+
+It is auto-discovered by pi and will:
+
+- run `uv run ruff check . --fix`
+- run `uv run ruff format .`
+- run `uv run ty check . --fix`
+- do this automatically on every `agent_end`
+- expose `/quality-check` for manual runs
+
+If pi is already running, use `/reload` to pick up the extension.
 
 ## Notes
 

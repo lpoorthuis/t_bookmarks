@@ -19,7 +19,12 @@ async def login(request: Request):
 
 
 @router.get("/callback")
-async def callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None):
+async def callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
     auth_service = request.app.state.auth_service
     if error:
         raise HTTPException(status_code=400, detail=error)

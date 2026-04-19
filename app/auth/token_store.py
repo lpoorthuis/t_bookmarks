@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.db.sqlite import Database
 
 
 def utcnow_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class TokenStore:
@@ -33,7 +33,9 @@ class TokenStore:
         expires_in = token_payload.get("expires_in")
         expires_at = None
         if expires_in is not None:
-            expires_at = (datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))).isoformat()
+            expires_at = (
+                datetime.now(UTC) + timedelta(seconds=int(expires_in))
+            ).isoformat()
         with self.db.connect() as connection:
             connection.execute(
                 """
@@ -68,7 +70,9 @@ class TokenStore:
 
     def get_token(self) -> dict[str, Any] | None:
         with self.db.connect() as connection:
-            row = connection.execute("SELECT * FROM tokens WHERE provider = 'x'").fetchone()
+            row = connection.execute(
+                "SELECT * FROM tokens WHERE provider = 'x'"
+            ).fetchone()
         return dict(row) if row else None
 
     def clear(self) -> None:
@@ -81,4 +85,4 @@ class TokenStore:
         if not expires_at:
             return False
         expires_dt = datetime.fromisoformat(expires_at)
-        return expires_dt <= datetime.now(timezone.utc) + timedelta(seconds=leeway_seconds)
+        return expires_dt <= datetime.now(UTC) + timedelta(seconds=leeway_seconds)

@@ -9,15 +9,25 @@ import httpx
 from app.auth.service import AuthError, AuthService
 from app.db.sqlite import Database
 from app.search.service import SearchService
-from app.sync.normalizer import extract_entities, normalize_media, normalize_posts, normalize_users, utcnow_iso
+from app.sync.normalizer import (
+    normalize_media,
+    normalize_posts,
+    normalize_users,
+    utcnow_iso,
+)
 from app.xapi.client import XApiClient
-
 
 logger = logging.getLogger("app.sync")
 
 
 class BookmarkSyncService:
-    def __init__(self, db: Database, auth_service: AuthService, x_client: XApiClient, search_service: SearchService):
+    def __init__(
+        self,
+        db: Database,
+        auth_service: AuthService,
+        x_client: XApiClient,
+        search_service: SearchService,
+    ):
         self.db = db
         self.auth_service = auth_service
         self.x_client = x_client
@@ -84,11 +94,15 @@ class BookmarkSyncService:
             while True:
                 page_counter += 1
                 self._status["message"] = f"Fetching page {page_counter}"
-                payload = await self._fetch_page_with_retries(access_token, user_id, pagination_token)
+                payload = await self._fetch_page_with_retries(
+                    access_token, user_id, pagination_token
+                )
                 users = normalize_users(payload)
                 posts, bookmarked_ids = normalize_posts(payload)
                 media = normalize_media(payload)
-                page_stats = self._persist_page(run_id, users, posts, media, bookmarked_ids)
+                page_stats = self._persist_page(
+                    run_id, users, posts, media, bookmarked_ids
+                )
                 seen_bookmarked_ids.update(bookmarked_ids)
 
                 meta = payload.get("meta") or {}
@@ -119,17 +133,21 @@ class BookmarkSyncService:
 
             deactivated = 0
             if full:
-                deactivated = self._deactivate_missing_bookmarks(run_id, seen_bookmarked_ids)
+                deactivated = self._deactivate_missing_bookmarks(
+                    run_id, seen_bookmarked_ids
+                )
                 self._status["posts_deactivated"] = deactivated
                 self._set_app_state("last_full_sync_at", utcnow_iso())
             self._set_app_state("last_sync_at", utcnow_iso())
             self._finish_run(run_id, "success", None, deactivated)
             finished_at = utcnow_iso()
-            self._status.update({
-                "running": False,
-                "finished_at": finished_at,
-                "message": "Sync completed",
-            })
+            self._status.update(
+                {
+                    "running": False,
+                    "finished_at": finished_at,
+                    "message": "Sync completed",
+                }
+            )
             logger.info(
                 "Completed sync run_id=%s mode=%s pages=%s bookmarks_seen=%s inserted=%s updated=%s deactivated=%s",
                 run_id,
@@ -142,24 +160,36 @@ class BookmarkSyncService:
             )
         except (AuthError, httpx.HTTPError, RuntimeError) as exc:
             logger.exception("Sync run_id=%s failed", run_id)
-            self._finish_run(run_id, "failed", str(exc), self._status["posts_deactivated"])
-            self._status.update({
-                "running": False,
-                "finished_at": utcnow_iso(),
-                "message": "Sync failed",
-                "error": str(exc),
-            })
+            self._finish_run(
+                run_id, "failed", str(exc), self._status["posts_deactivated"]
+            )
+            self._status.update(
+                {
+                    "running": False,
+                    "finished_at": utcnow_iso(),
+                    "message": "Sync failed",
+                    "error": str(exc),
+                }
+            )
 
-    async def _fetch_page_with_retries(self, access_token: str, user_id: str, pagination_token: str | None) -> dict[str, Any]:
+    async def _fetch_page_with_retries(
+        self, access_token: str, user_id: str, pagination_token: str | None
+    ) -> dict[str, Any]:
         delay = 1.0
         for attempt in range(5):
             try:
-                return await self.x_client.get_bookmarks_page(access_token, user_id, pagination_token)
+                return await self.x_client.get_bookmarks_page(
+                    access_token, user_id, pagination_token
+                )
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 if status in {429, 500, 502, 503, 504} and attempt < 4:
                     retry_after = exc.response.headers.get("Retry-After")
-                    sleep_for = float(retry_after) if retry_after and retry_after.isdigit() else delay
+                    sleep_for = (
+                        float(retry_after)
+                        if retry_after and retry_after.isdigit()
+                        else delay
+                    )
                     logger.warning(
                         "Bookmarks page fetch failed with status=%s; retrying in %s seconds (attempt %s/5)",
                         status,
@@ -169,9 +199,12 @@ class BookmarkSyncService:
                     await asyncio.sleep(sleep_for)
                     delay *= 2
                     continue
-                logger.error("Bookmarks page fetch failed with status=%s and will not be retried", status)
+                logger.error(
+                    "Bookmarks page fetch failed with status=%s and will not be retried",
+                    status,
+                )
                 raise
-                raise
+        raise RuntimeError("Bookmark page fetch exhausted retries without returning")
 
     def _create_run(self, mode: str, started_at: str) -> int:
         with self.db.connect() as connection:
@@ -179,9 +212,14 @@ class BookmarkSyncService:
                 "INSERT INTO sync_runs(started_at, status, mode) VALUES (?, 'running', ?)",
                 (started_at, mode),
             )
-            return int(cursor.lastrowid)
+            lastrowid = cursor.lastrowid
+            if lastrowid is None:
+                raise RuntimeError("Failed to create sync run record")
+            return int(lastrowid)
 
-    def _finish_run(self, run_id: int, status: str, error_message: str | None, deactivated: int) -> None:
+    def _finish_run(
+        self, run_id: int, status: str, error_message: str | None, deactivated: int
+    ) -> None:
         with self.db.connect() as connection:
             connection.execute(
                 """
@@ -232,7 +270,9 @@ class BookmarkSyncService:
                 )
 
             for post in posts:
-                exists = connection.execute("SELECT 1 FROM posts WHERE id = ?", (post["id"],)).fetchone()
+                exists = connection.execute(
+                    "SELECT 1 FROM posts WHERE id = ?", (post["id"],)
+                ).fetchone()
                 if exists:
                     posts_updated += 1
                 else:
@@ -308,8 +348,12 @@ class BookmarkSyncService:
 
     def _deactivate_missing_bookmarks(self, run_id: int, seen_ids: set[str]) -> int:
         with self.db.connect() as connection:
-            rows = connection.execute("SELECT post_id FROM bookmarks WHERE is_bookmarked = 1").fetchall()
-            to_deactivate = [row["post_id"] for row in rows if row["post_id"] not in seen_ids]
+            rows = connection.execute(
+                "SELECT post_id FROM bookmarks WHERE is_bookmarked = 1"
+            ).fetchall()
+            to_deactivate = [
+                row["post_id"] for row in rows if row["post_id"] not in seen_ids
+            ]
             now = utcnow_iso()
             for post_id in to_deactivate:
                 connection.execute(
@@ -335,5 +379,7 @@ class BookmarkSyncService:
 
     def latest_sync_timestamp(self) -> str | None:
         with self.db.connect() as connection:
-            row = connection.execute("SELECT value FROM app_state WHERE key = 'last_sync_at'").fetchone()
+            row = connection.execute(
+                "SELECT value FROM app_state WHERE key = 'last_sync_at'"
+            ).fetchone()
         return row["value"] if row else None

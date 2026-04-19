@@ -46,9 +46,17 @@ class OAuthClient:
     async def _token_request(self, data: dict[str, str]) -> dict[str, Any]:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         if self.settings.x_client_secret:
-            secret = f"{self.settings.x_client_id}:{self.settings.x_client_secret}".encode("utf-8")
-            headers["Authorization"] = "Basic " + base64.b64encode(secret).decode("ascii")
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
-            response = await client.post(self.settings.x_token_url, data=data, headers=headers)
+            secret = (
+                f"{self.settings.x_client_id}:{self.settings.x_client_secret}".encode()
+            )
+            headers["Authorization"] = "Basic " + base64.b64encode(secret).decode(
+                "ascii"
+            )
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds
+        ) as client:
+            response = await client.post(
+                self.settings.x_token_url, data=data, headers=headers
+            )
             response.raise_for_status()
             return response.json()

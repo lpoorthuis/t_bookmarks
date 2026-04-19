@@ -24,7 +24,6 @@ from app.search.service import SearchService
 from app.sync.bookmark_sync import BookmarkSyncService
 from app.xapi.client import XApiClient
 
-
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,10 @@ async def periodic_sync_loop(app: FastAPI) -> None:
     logger.info("Periodic sync loop started with interval=%s seconds", interval_seconds)
     while True:
         try:
-            if app.state.auth_service.get_auth_status()["connected"] and not app.state.sync_service.is_running():
+            if (
+                app.state.auth_service.get_auth_status()["connected"]
+                and not app.state.sync_service.is_running()
+            ):
                 logger.info("Triggering scheduled incremental sync")
                 app.state.sync_service.start_sync(full=False)
         except Exception:
@@ -47,7 +49,11 @@ async def periodic_sync_loop(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting application with database=%s log_dir=%s", settings.database_path, settings.log_dir)
+    logger.info(
+        "Starting application with database=%s log_dir=%s",
+        settings.database_path,
+        settings.log_dir,
+    )
     db = Database(settings.database_path)
     db.initialize(BASE_DIR / "db" / "schema.sql")
 
@@ -73,7 +79,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="t_bookmarks", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "ui" / "static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=str(BASE_DIR / "ui" / "static")), name="static"
+)
 
 app.include_router(auth_router)
 app.include_router(sync_router)
