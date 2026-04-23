@@ -61,21 +61,14 @@ def normalize_users(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def normalize_posts(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
     primary = payload.get("data", [])
-    included_posts = payload.get("includes", {}).get("tweets", [])
-    all_posts = []
+    posts = []
     bookmarked_ids = []
-    seen: set[str] = set()
     now = utcnow_iso()
 
     for post in primary:
-        bookmarked_ids.append(post["id"])
-
-    for post in primary + included_posts:
         post_id = post["id"]
-        if post_id in seen:
-            continue
-        seen.add(post_id)
-        all_posts.append(
+        bookmarked_ids.append(post_id)
+        posts.append(
             {
                 "id": post_id,
                 "author_id": post.get("author_id"),
@@ -93,11 +86,11 @@ def normalize_posts(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], list
                 "updated_at": now,
             }
         )
-    return all_posts, bookmarked_ids
+    return posts, bookmarked_ids
 
 
 def normalize_media(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    posts = payload.get("data", []) + payload.get("includes", {}).get("tweets", [])
+    posts = payload.get("data", [])
     media_by_key = {
         item["media_key"]: item for item in payload.get("includes", {}).get("media", [])
     }

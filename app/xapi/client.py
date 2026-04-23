@@ -59,21 +59,16 @@ class XApiClient:
                     "public_metrics",
                     "note_tweet",
                     "attachments",
-                    "referenced_tweets",
                     "possibly_sensitive",
                     "conversation_id",
                 ]
             ),
-            "expansions": ",".join(
-                [
-                    "author_id",
-                    "attachments.media_keys",
-                    "referenced_tweets.id",
-                    "referenced_tweets.id.author_id",
-                ]
-            ),
-            "user.fields": "id,name,username,verified,profile_image_url,description",
-            "media.fields": "media_key,type,url,preview_image_url,alt_text,width,height",
+            # Keep responses focused on the bookmarked posts themselves.
+            # Avoid fetching referenced tweet expansions because those are not
+            # bookmarks and can increase billable resource volume.
+            "expansions": "author_id,attachments.media_keys",
+            "user.fields": "id,name,username",
+            "media.fields": "media_key,type,url,preview_image_url",
         }
         if pagination_token:
             params["pagination_token"] = pagination_token

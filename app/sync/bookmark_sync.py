@@ -41,6 +41,7 @@ class BookmarkSyncService:
             "mode": None,
             "pages_fetched": 0,
             "posts_seen": 0,
+            "new_bookmarks_seen": 0,
             "posts_inserted": 0,
             "posts_updated": 0,
             "posts_deactivated": 0,
@@ -75,6 +76,7 @@ class BookmarkSyncService:
                 "mode": mode,
                 "pages_fetched": 0,
                 "posts_seen": 0,
+                "new_bookmarks_seen": 0,
                 "posts_inserted": 0,
                 "posts_updated": 0,
                 "posts_deactivated": 0,
@@ -100,6 +102,15 @@ class BookmarkSyncService:
                 users = normalize_users(payload)
                 posts, bookmarked_ids = normalize_posts(payload)
                 media = normalize_media(payload)
+                existing_bookmark_ids = self._get_existing_bookmark_ids(bookmarked_ids)
+                new_bookmarks_this_page = len(
+                    [
+                        post_id
+                        for post_id in bookmarked_ids
+                        if post_id not in existing_bookmark_ids
+                    ]
+                )
+
                 page_stats = self._persist_page(
                     run_id, users, posts, media, bookmarked_ids
                 )
@@ -108,16 +119,18 @@ class BookmarkSyncService:
                 meta = payload.get("meta") or {}
                 self._status["pages_fetched"] += 1
                 self._status["posts_seen"] += page_stats["posts_seen"]
+                self._status["new_bookmarks_seen"] += new_bookmarks_this_page
                 self._status["posts_inserted"] += page_stats["posts_inserted"]
                 self._status["posts_updated"] += page_stats["posts_updated"]
 
                 pagination_token = meta.get("next_token")
                 logger.info(
-                    "Processed bookmarks page run_id=%s page=%s result_count=%s next_token_present=%s inserted=%s updated=%s seen_total=%s",
+                    "Processed bookmarks page run_id=%s page=%s result_count=%s next_token_present=%s new_bookmarks=%s inserted=%s updated=%s seen_total=%s",
                     run_id,
                     page_counter,
                     meta.get("result_count"),
                     bool(pagination_token),
+                    new_bookmarks_this_page,
                     page_stats["posts_inserted"],
                     page_stats["posts_updated"],
                     self._status["posts_seen"],
@@ -128,7 +141,20 @@ class BookmarkSyncService:
                     )
                 if not pagination_token:
                     break
+                if not full and new_bookmarks_this_page == 0:
+                    logger.info(
+                        "Stopping incremental sync run_id=%s at page=%s because the page contained no unseen bookmarks",
+                        run_id,
+                        page_counter,
+                    )
+                    break
                 if pages_limit is not None and page_counter >= pages_limit:
+                    logger.info(
+                        "Stopping incremental sync run_id=%s at page=%s because page limit=%s was reached",
+                        run_id,
+                        page_counter,
+                        pages_limit,
+                    )
                     break
 
             deactivated = 0
@@ -345,6 +371,15 @@ class BookmarkSyncService:
             "posts_inserted": posts_inserted,
             "posts_updated": posts_updated,
         }
+
+    def _get_existing_bookmark_ids(self, post_ids: list[str]) -> set[str]:
+        if not post_ids:
+            return set()
+        placeholders = ",".join("?" for _ in post_ids)
+        query = f"SELECT post_id FROM bookmarks WHERE post_id IN ({placeholders})"
+        with self.db.connect() as connection:
+            rows = connection.execute(query, post_ids).fetchall()
+        return {row["post_id"] for row in rows}
 
     def _deactivate_missing_bookmarks(self, run_id: int, seen_ids: set[str]) -> int:
         with self.db.connect() as connection:

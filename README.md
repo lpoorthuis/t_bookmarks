@@ -102,6 +102,9 @@ If pi is already running, use `/reload` to pick up the extension.
 - Bookmark data is private; keep the database file secure.
 - Logs are written to `./logs/app.log` and `./logs/sync.log` by default.
 - The bookmarks sync uses `max_results=99` as a workaround for an X API pagination quirk where requesting `100` returned `99` results without a `next_token`.
+- Scheduled background sync no longer runs immediately at process startup; it runs after the configured interval. This avoids accidental paid API calls during repeated local restarts (for example with `uvicorn --reload`).
+- Incremental sync stops early once a page contains no unseen bookmark IDs, which significantly reduces paid requests on steady-state runs.
+- Bookmark extraction now focuses on bookmarked posts and omits referenced tweet expansions to avoid pulling non-bookmarked resources.
 
 ## Project layout
 

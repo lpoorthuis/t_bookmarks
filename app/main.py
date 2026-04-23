@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -34,17 +35,36 @@ TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "ui" / "templates"))
 async def periodic_sync_loop(app: FastAPI) -> None:
     interval_seconds = max(60, settings.sync_interval_minutes * 60)
     logger.info("Periodic sync loop started with interval=%s seconds", interval_seconds)
+
+    # Do not trigger network sync immediately on startup. This avoids accidental
+    # repeated paid API calls during local development restarts.
     while True:
+        await asyncio.sleep(interval_seconds)
         try:
-            if (
-                app.state.auth_service.get_auth_status()["connected"]
-                and not app.state.sync_service.is_running()
-            ):
-                logger.info("Triggering scheduled incremental sync")
-                app.state.sync_service.start_sync(full=False)
+            if not app.state.auth_service.get_auth_status()["connected"]:
+                continue
+            if app.state.sync_service.is_running():
+                continue
+
+            last_sync_at = app.state.sync_service.latest_sync_timestamp()
+            if last_sync_at:
+                try:
+                    last_sync_dt = datetime.fromisoformat(last_sync_at)
+                    if last_sync_dt.tzinfo is None:
+                        last_sync_dt = last_sync_dt.replace(tzinfo=UTC)
+                    age_seconds = (datetime.now(UTC) - last_sync_dt).total_seconds()
+                    if age_seconds < interval_seconds:
+                        continue
+                except ValueError:
+                    logger.warning(
+                        "Could not parse last_sync_at=%s; running scheduled sync",
+                        last_sync_at,
+                    )
+
+            logger.info("Triggering scheduled incremental sync")
+            app.state.sync_service.start_sync(full=False)
         except Exception:
             logger.exception("Periodic sync loop iteration failed")
-        await asyncio.sleep(interval_seconds)
 
 
 @asynccontextmanager
