@@ -7,6 +7,8 @@ const els = {
   bookmarkCount: document.getElementById("bookmarkCount"),
   lastSync: document.getElementById("lastSync"),
   syncStatus: document.getElementById("syncStatus"),
+  lastRunCost: document.getElementById("lastRunCost"),
+  estCostTotal: document.getElementById("estCostTotal"),
   syncMessage: document.getElementById("syncMessage"),
   searchForm: document.getElementById("searchForm"),
   queryInput: document.getElementById("queryInput"),
@@ -70,6 +72,13 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
+function formatUsd(value) {
+  if (value === null || value === undefined) return "-";
+  const number = Number(value);
+  if (Number.isNaN(number)) return "-";
+  return `$${number.toFixed(4)}`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -112,7 +121,16 @@ async function refreshStatus() {
   els.userInfo.textContent = auth.connected ? `${auth.user.name || ""} @${auth.user.username || ""}`.trim() : "-";
   els.bookmarkCount.textContent = String(appStatus.bookmark_count ?? 0);
   els.lastSync.textContent = formatDate(appStatus.last_sync_at);
+  renderCost(appStatus.cost);
   renderSyncStatus(appStatus.sync);
+}
+
+function renderCost(cost) {
+  els.estCostTotal.textContent = formatUsd(cost?.total_est_cost_usd);
+  const lastRun = cost?.last_run;
+  els.lastRunCost.textContent = lastRun
+    ? `${lastRun.mode}: ${lastRun.posts_read} posts · ${formatUsd(lastRun.est_cost_usd)}`
+    : "-";
 }
 
 function renderSyncStatus(sync) {
@@ -307,7 +325,9 @@ els.logoutButton.addEventListener("click", async () => {
 });
 
 els.syncButton.addEventListener("click", async () => {
-  await fetchJson("/api/sync/start?full=true", { method: "POST" });
+  // Incremental only: fetches new bookmarks cheaply. A full crawl (re-reads the
+  // whole library, higher cost) is available via `python -m scripts.sync`.
+  await fetchJson("/api/sync/start?full=false", { method: "POST" });
   await pollSyncStatus();
 });
 

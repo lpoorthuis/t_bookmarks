@@ -6,7 +6,9 @@ router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 
 @router.post("/start")
-async def start_sync(request: Request, full: bool = True):
+async def start_sync(request: Request, full: bool = False):
+    # Default to the cheap incremental sync. A full crawl (re-reads every
+    # bookmark) must be requested explicitly with ?full=true, e.g. from the CLI.
     sync_service = request.app.state.sync_service
     return sync_service.start_sync(full=full)
 

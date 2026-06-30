@@ -15,7 +15,7 @@
       <div class="actions">
         <button id="loginButton">Connect X account</button>
         <button id="logoutButton" class="secondary">Logout</button>
-        <button id="syncButton">Sync now</button>
+        <button id="syncButton" title="Fetch new bookmarks (incremental, low cost)">Sync new</button>
       </div>
     </header>
 
@@ -25,6 +25,8 @@
       <div><strong>Bookmarks:</strong> <span id="bookmarkCount">0</span></div>
       <div><strong>Last sync:</strong> <span id="lastSync">Never</span></div>
       <div><strong>Sync status:</strong> <span id="syncStatus">Idle</span></div>
+      <div title="Estimated cost of the last sync (posts read x rate)."><strong>Last sync cost:</strong> <span id="lastRunCost">-</span></div>
+      <div title="Upper-bound estimate across all syncs; ignores the 24h dedup window, so real spend is lower. The Developer Console is the source of truth."><strong>Estimated API cost (total):</strong> <span id="estCostTotal">-</span></div>
       <div id="syncMessage" class="muted"></div>
     </section>
 

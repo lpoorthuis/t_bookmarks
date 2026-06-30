@@ -113,6 +113,20 @@ expansion. Controls:
   cost (authors are free); it only trims payload size. Author name/handle/avatar
   power search, so leave it on unless you have a reason not to.
 
+The UI **"Sync new"** button and the background scheduler only run *incremental*
+syncs (new bookmarks only, ~$0.01–0.03, and ~$0 on same-day repeats via dedup).
+A *full* crawl re-reads every bookmark — needed to detect bookmarks you've
+*removed* on X, which incremental never deactivates — and is run explicitly from
+the CLI:
+
+```bash
+uv run python -m scripts.sync                # full crawl (detect removals)
+uv run python -m scripts.sync --incremental  # same as the UI button
+```
+
+The status panel shows the last sync's cost and a running estimated total
+(from the `api_usage` table).
+
 Every sync records its billable footprint and an estimated cost in the
 `api_usage` table, surfaced under `cost` in `GET /api/status`. The estimate is an
 upper bound: it does not model X's 24h UTC deduplication window (re-reading the
