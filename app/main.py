@@ -81,7 +81,9 @@ async def lifespan(app: FastAPI):
     token_store = TokenStore(db)
     auth_service = AuthService(OAuthClient(settings), token_store, x_client)
     search_service = SearchService(db)
-    sync_service = BookmarkSyncService(db, auth_service, x_client, search_service)
+    sync_service = BookmarkSyncService(
+        db, auth_service, x_client, search_service, settings
+    )
 
     app.state.db = db
     app.state.auth_service = auth_service

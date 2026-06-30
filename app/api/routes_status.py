@@ -14,9 +14,19 @@ async def app_status(request: Request):
         bookmark_count = connection.execute(
             "SELECT COUNT(*) AS count FROM bookmarks WHERE is_bookmarked = 1"
         ).fetchone()["count"]
+        total_est_cost_usd = connection.execute(
+            "SELECT COALESCE(SUM(est_cost_usd), 0) AS total FROM api_usage"
+        ).fetchone()["total"]
+        last_run_row = connection.execute(
+            "SELECT * FROM api_usage ORDER BY run_id DESC LIMIT 1"
+        ).fetchone()
     return {
         "connected": auth_service.get_auth_status()["connected"],
         "last_sync_at": sync_service.latest_sync_timestamp(),
         "bookmark_count": bookmark_count,
         "sync": sync_service.get_sync_status(),
+        "cost": {
+            "total_est_cost_usd": total_est_cost_usd,
+            "last_run": dict(last_run_row) if last_run_row else None,
+        },
     }

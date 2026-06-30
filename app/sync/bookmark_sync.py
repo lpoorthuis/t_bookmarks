@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
 import httpx
 
 from app.auth.service import AuthError, AuthService
+from app.config import Settings
 from app.db.sqlite import Database
 from app.search.service import SearchService
 from app.sync.normalizer import (
@@ -15,7 +17,11 @@ from app.sync.normalizer import (
     normalize_users,
     utcnow_iso,
 )
-from app.xapi.client import XApiClient
+from app.xapi.client import (
+    XApiClient,
+    estimate_cost,
+    summarize_footprint,
+)
 
 logger = logging.getLogger("app.sync")
 
@@ -27,11 +33,17 @@ class BookmarkSyncService:
         auth_service: AuthService,
         x_client: XApiClient,
         search_service: SearchService,
+        settings: Settings,
     ):
         self.db = db
         self.auth_service = auth_service
         self.x_client = x_client
         self.search_service = search_service
+        self.settings = settings
+        # The usage endpoint is project-level and often 403s with a user token.
+        # Snapshots are best-effort; disable after the first failure to avoid
+        # repeated failing calls and log spam on every scheduled sync.
+        self._usage_available = True
         self._task: asyncio.Task[None] | None = None
         self._status: dict[str, Any] = {
             "running": False,
@@ -45,6 +57,11 @@ class BookmarkSyncService:
             "posts_inserted": 0,
             "posts_updated": 0,
             "posts_deactivated": 0,
+            "posts_read": 0,
+            "users_read": 0,
+            "media_seen": 0,
+            "referenced_posts": 0,
+            "est_cost_usd": 0.0,
             "message": None,
             "error": None,
         }
@@ -80,12 +97,30 @@ class BookmarkSyncService:
                 "posts_inserted": 0,
                 "posts_updated": 0,
                 "posts_deactivated": 0,
+                "posts_read": 0,
+                "users_read": 0,
+                "media_seen": 0,
+                "referenced_posts": 0,
+                "est_cost_usd": 0.0,
                 "message": "Starting sync",
                 "error": None,
             }
         )
+        max_results = (
+            self.settings.full_max_results
+            if full
+            else self.settings.incremental_max_results
+        )
+        include_authors = self.settings.include_author_expansion
+        usage_before = await self._snapshot_usage("before")
         try:
-            logger.info("Starting sync run_id=%s mode=%s", run_id, mode)
+            logger.info(
+                "Starting sync run_id=%s mode=%s max_results=%s author_expansion=%s",
+                run_id,
+                mode,
+                max_results,
+                include_authors,
+            )
             access_token = await self.auth_service.get_valid_access_token()
             user_id = self.auth_service.get_current_user_id()
             seen_bookmarked_ids: set[str] = set()
@@ -97,8 +132,26 @@ class BookmarkSyncService:
                 page_counter += 1
                 self._status["message"] = f"Fetching page {page_counter}"
                 payload = await self._fetch_page_with_retries(
-                    access_token, user_id, pagination_token
+                    access_token,
+                    user_id,
+                    pagination_token,
+                    max_results,
+                    include_authors,
                 )
+                footprint = summarize_footprint(payload)
+                self._status["posts_read"] += footprint.posts
+                self._status["users_read"] += footprint.users
+                self._status["media_seen"] += footprint.media
+                self._status["referenced_posts"] += footprint.referenced_posts
+                self._status["est_cost_usd"] += estimate_cost(
+                    footprint, self.settings
+                ).total_usd
+                if footprint.referenced_posts:
+                    logger.warning(
+                        "Bookmarks page returned %s referenced posts (includes.tweets); "
+                        "these are billable non-bookmark reads and indicate an unexpected expansion",
+                        footprint.referenced_posts,
+                    )
                 users = normalize_users(payload)
                 posts, bookmarked_ids = normalize_posts(payload)
                 media = normalize_media(payload)
@@ -166,6 +219,8 @@ class BookmarkSyncService:
                 self._set_app_state("last_full_sync_at", utcnow_iso())
             self._set_app_state("last_sync_at", utcnow_iso())
             self._finish_run(run_id, "success", None, deactivated)
+            usage_after = await self._snapshot_usage("after")
+            self._record_api_usage(run_id, mode, usage_before, usage_after)
             finished_at = utcnow_iso()
             self._status.update(
                 {
@@ -175,7 +230,8 @@ class BookmarkSyncService:
                 }
             )
             logger.info(
-                "Completed sync run_id=%s mode=%s pages=%s bookmarks_seen=%s inserted=%s updated=%s deactivated=%s",
+                "Completed sync run_id=%s mode=%s pages=%s bookmarks_seen=%s inserted=%s updated=%s deactivated=%s "
+                "posts_read=%s users_read=%s referenced_posts=%s est_cost_usd=%.4f",
                 run_id,
                 mode,
                 self._status["pages_fetched"],
@@ -183,12 +239,18 @@ class BookmarkSyncService:
                 self._status["posts_inserted"],
                 self._status["posts_updated"],
                 deactivated,
+                self._status["posts_read"],
+                self._status["users_read"],
+                self._status["referenced_posts"],
+                self._status["est_cost_usd"],
             )
         except (AuthError, httpx.HTTPError, RuntimeError) as exc:
             logger.exception("Sync run_id=%s failed", run_id)
             self._finish_run(
                 run_id, "failed", str(exc), self._status["posts_deactivated"]
             )
+            usage_after = await self._snapshot_usage("after")
+            self._record_api_usage(run_id, mode, usage_before, usage_after)
             self._status.update(
                 {
                     "running": False,
@@ -199,13 +261,22 @@ class BookmarkSyncService:
             )
 
     async def _fetch_page_with_retries(
-        self, access_token: str, user_id: str, pagination_token: str | None
+        self,
+        access_token: str,
+        user_id: str,
+        pagination_token: str | None,
+        max_results: int,
+        include_authors: bool,
     ) -> dict[str, Any]:
         delay = 1.0
         for attempt in range(5):
             try:
                 return await self.x_client.get_bookmarks_page(
-                    access_token, user_id, pagination_token
+                    access_token,
+                    user_id,
+                    pagination_token,
+                    max_results=max_results,
+                    include_author_expansion=include_authors,
                 )
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -231,6 +302,70 @@ class BookmarkSyncService:
                 )
                 raise
         raise RuntimeError("Bookmark page fetch exhausted retries without returning")
+
+    async def _snapshot_usage(self, label: str) -> str | None:
+        """Best-effort capture of GET /2/usage/tweets as a JSON string.
+
+        Never raise: a failed usage read must not abort a sync. Returns None on
+        error (for example a 403 when the token lacks project-level access), and
+        disables further attempts for this process so syncs stop retrying it.
+        """
+        if not self._usage_available:
+            return None
+        try:
+            access_token = await self.auth_service.get_valid_access_token()
+            payload = await self.x_client.get_usage(access_token)
+            return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        except (AuthError, httpx.HTTPError, RuntimeError) as exc:
+            self._usage_available = False
+            logger.info(
+                "Usage endpoint snapshot (%s) unavailable; cost still estimated from "
+                "response footprint. Reason: %s",
+                label,
+                exc,
+            )
+            return None
+
+    def _record_api_usage(
+        self,
+        run_id: int,
+        mode: str,
+        usage_before: str | None,
+        usage_after: str | None,
+    ) -> None:
+        with self.db.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO api_usage(
+                    run_id, mode, pages, posts_read, users_read, media_seen,
+                    referenced_posts, est_cost_usd, usage_before, usage_after, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    mode=excluded.mode,
+                    pages=excluded.pages,
+                    posts_read=excluded.posts_read,
+                    users_read=excluded.users_read,
+                    media_seen=excluded.media_seen,
+                    referenced_posts=excluded.referenced_posts,
+                    est_cost_usd=excluded.est_cost_usd,
+                    usage_before=excluded.usage_before,
+                    usage_after=excluded.usage_after,
+                    created_at=excluded.created_at
+                """,
+                (
+                    run_id,
+                    mode,
+                    self._status["pages_fetched"],
+                    self._status["posts_read"],
+                    self._status["users_read"],
+                    self._status["media_seen"],
+                    self._status["referenced_posts"],
+                    self._status["est_cost_usd"],
+                    usage_before,
+                    usage_after,
+                    utcnow_iso(),
+                ),
+            )
 
     def _create_run(self, mode: str, started_at: str) -> int:
         with self.db.connect() as connection:

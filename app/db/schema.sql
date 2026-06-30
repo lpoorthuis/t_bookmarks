@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS app_state (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS api_usage (
+    run_id INTEGER PRIMARY KEY,
+    mode TEXT,
+    pages INTEGER NOT NULL DEFAULT 0,
+    posts_read INTEGER NOT NULL DEFAULT 0,
+    users_read INTEGER NOT NULL DEFAULT 0,
+    media_seen INTEGER NOT NULL DEFAULT 0,
+    referenced_posts INTEGER NOT NULL DEFAULT 0,
+    est_cost_usd REAL NOT NULL DEFAULT 0,
+    usage_before TEXT,
+    usage_after TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES sync_runs(id)
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS post_search USING fts5(
     post_id UNINDEXED,
     full_text,

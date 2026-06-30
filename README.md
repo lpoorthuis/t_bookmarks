@@ -95,13 +95,58 @@ It is auto-discovered by pi and will:
 
 If pi is already running, use `/reload` to pick up the extension.
 
+## API cost
+
+The X API uses pay-per-use pricing. **Measured on this account: only the
+bookmarked posts are billed, as "owned reads" at $0.001 each — author profiles
+and media returned via expansions are free.** (A probe of a 99-post page that
+also returned 74 authors and 35 media cost exactly $0.10 = 99 × $0.001.) So the
+cost depends on **how many posts you read across UTC days**, not on the author
+expansion. Controls:
+
+- `INCREMENTAL_MAX_RESULTS` (default `10`) vs `FULL_MAX_RESULTS` (default `99`) —
+  the real lever. Routine incremental polling pays per post returned, so a small
+  page makes the recurring "anything new?" check cheap (~$0.01/day instead of
+  ~$0.10/day); full syncs keep the large page since they read every bookmark
+  regardless. Avoid unnecessary full syncs (they re-read all bookmarks).
+- `X_INCLUDE_AUTHOR_EXPANSION` (default `true`) — does **not** meaningfully change
+  cost (authors are free); it only trims payload size. Author name/handle/avatar
+  power search, so leave it on unless you have a reason not to.
+
+Every sync records its billable footprint and an estimated cost in the
+`api_usage` table, surfaced under `cost` in `GET /api/status`. The estimate is an
+upper bound: it does not model X's 24h UTC deduplication window (re-reading the
+same resource within a UTC day is charged once). The **Developer Console balance
+is the source of truth**; cost rates change, so verify `COST_*_USD` in the Console.
+
+> The optional `GET /2/usage/tweets` cross-check is a project-level endpoint and
+> usually returns **403** with this app's user (PKCE) token, since it needs
+> app-only access. That is expected — the probe and sync skip it and still
+> estimate cost from the response footprint.
+
+### Verify spend after recharging credits
+
+```bash
+uv run python -m scripts.probe_cost            # one read with current settings
+uv run python -m scripts.probe_cost --no-author # compare footprint without authors
+```
+
+The probe makes **one real bookmarks request** (a few credits — that is the
+point) and prints the footprint + an estimated `TOTAL`. Steps:
+
+1. Note your credit balance in the Developer Console.
+2. Run the probe, then refresh the Console and compare the balance **drop** to
+   the printed `TOTAL`. The drop tracks the bookmarked posts only (~`posts ×
+   $0.001`); author/media counts do not add to it.
+3. Run it again the same UTC day → the drop should be ~$0 (dedup).
+
 ## Notes
 
 - Tokens are stored locally in SQLite.
 - The app binds to `127.0.0.1` by default.
 - Bookmark data is private; keep the database file secure.
 - Logs are written to `./logs/app.log` and `./logs/sync.log` by default.
-- The bookmarks sync uses `max_results=99` as a workaround for an X API pagination quirk where requesting `100` returned `99` results without a `next_token`.
+- Full syncs use `FULL_MAX_RESULTS=99` as a workaround for an X API pagination quirk where requesting `100` returned `99` results without a `next_token`. Incremental syncs use the smaller `INCREMENTAL_MAX_RESULTS` to keep routine polling cheap (see "API cost").
 - Scheduled background sync no longer runs immediately at process startup; it runs after the configured interval. This avoids accidental paid API calls during repeated local restarts (for example with `uvicorn --reload`).
 - Incremental sync stops early once a page contains no unseen bookmark IDs, which significantly reduces paid requests on steady-state runs.
 - Bookmark extraction now focuses on bookmarked posts and omits referenced tweet expansions to avoid pulling non-bookmarked resources.

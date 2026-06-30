@@ -23,6 +23,13 @@ def _load_env_file() -> None:
 _load_env_file()
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(slots=True)
 class Settings:
     app_host: str = os.environ.get("APP_HOST", "127.0.0.1")
@@ -48,6 +55,24 @@ class Settings:
     x_authorize_url: str = "https://x.com/i/oauth2/authorize"
     x_token_url: str = "https://api.x.com/2/oauth2/token"
     x_api_base_url: str = "https://api.x.com/2"
+    x_usage_url: str = "https://api.x.com/2/usage/tweets"
+
+    # Cost controls. MEASURED: only the bookmarked posts are billed ($0.001 each);
+    # expansion authors and media are free. So the lever is reads-per-UTC-day:
+    # poll incrementally with a small page so the routine "anything new?" check is
+    # cheap. The author toggle does not affect cost (authors are free); it only
+    # trims payload size, so it defaults on to keep author data for search.
+    include_author_expansion: bool = _env_bool("X_INCLUDE_AUTHOR_EXPANSION", True)
+    incremental_max_results: int = int(os.environ.get("INCREMENTAL_MAX_RESULTS", "10"))
+    full_max_results: int = int(os.environ.get("FULL_MAX_RESULTS", "99"))
+
+    # Pay-per-use rates in USD per resource. VERIFY current values in the X
+    # Developer Console; X changed these multiple times in 2026 and the public
+    # docs are not authoritative. Used only for local cost estimation, not billing.
+    # cost_user_read_usd is unused for bookmarks (expansion authors are not billed).
+    cost_owned_read_usd: float = float(os.environ.get("COST_OWNED_READ_USD", "0.001"))
+    cost_user_read_usd: float = float(os.environ.get("COST_USER_READ_USD", "0.010"))
+    cost_post_read_usd: float = float(os.environ.get("COST_POST_READ_USD", "0.005"))
 
     @property
     def scope_string(self) -> str:
